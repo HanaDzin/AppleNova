@@ -26,18 +26,26 @@ const VideoCarousel = () => {
   const { isEnd, isLastVideo, startPlay, videoId, isPlaying } = video;
 
   useGSAP(() => {
+    //video starts playing once it's in the frame
     gsap.to("#video", {
       scrollTrigger: {
         trigger: "#video",
         toggleActions: "restart none none none",
       },
+      //when this animation is completed
       onComplete: () => {
         setVideo((prevVideo) => ({
           ...prevVideo,
-          startPlay: true,
-          isPlaying: true,
+          startPlay: true, //start the current video
+          isPlaying: true, //& mark it as being played
         }));
       },
+    });
+
+    gsap.to("#slider", {
+      transform: `translateX(${-100 * videoId}%)`,
+      duration: 2,
+      ease: "power2.inOut",
     });
   }, [isEnd, videoId]);
 
@@ -52,50 +60,106 @@ const VideoCarousel = () => {
     }
   }, [startPlay, videoId, isPlaying, loadedData]);
 
+  //adds metadata of loaded video to loadedData state, ensuring enough data is loaded before playing
   const handleLoadedMetadata = (index, e) =>
     setLoadedData((pre) => [...pre, e]);
 
   //to start playing the videos
   useEffect(() => {
-    const currentProgress = 0;
+    let currentProgress = 0;
     let span = videoSpanRef.current; //span of the currently playing video
 
     if (span[videoId]) {
       //animate the progress of the video
       let anim = gsap.to(span[videoId], {
-        onUpdate: () => {},
-        onComplete: () => {},
+        onUpdate: () => {
+          const progress = Math.ceil(anim.progress() * 100);
+          if (progress != currentProgress) {
+            currentProgress = progress;
+
+            //change the width of the progress container, based on device
+            gsap.to(videoDivRef.current[videoId], {
+              width:
+                window.innerWidth < 760
+                  ? "10vw"
+                  : window.innerWidth < 1200
+                  ? "10vw"
+                  : "4vw",
+            });
+
+            //show the current progress (by adding white bg dynamically based on progress)
+            gsap.to(span[videoId], {
+              width: `${currentProgress}%`,
+              backgroundColor: "white",
+            });
+          }
+        },
+        onComplete: () => {
+          if (isPlaying) {
+            gsap.to(videoDivRef.current[videoId], {
+              width: "12px",
+            });
+
+            gsap.to(span[videoId], {
+              backgroundColor: "#afafaf",
+            });
+          }
+        },
       });
+
+      if (videoId === 0) {
+        anim.restart();
+      }
+
+      const animUpdate = () => {
+        anim.progress(
+          videoRef.current[videoId].currentTime /
+            hightlightsSlides[videoId].videoDuration
+        );
+      };
+
+      if (isPlaying) {
+        gsap.ticker.add(animUpdate);
+      } else {
+        gsap.ticker.remove(animUpdate);
+      }
     }
   }, [videoId, startPlay]); //recall whenever these vars change
 
+  //depending on action, update the video state
   const handleProcess = (type, i) => {
     switch (type) {
       case "video-end":
         setVideo((prevVideo) => ({
           ...prevVideo,
-          isEnd: true,
-          videoId: i + 1,
+          isEnd: true, //mark the video as ended
+          videoId: i + 1, //move onto the nex video
         }));
         break;
 
-      case "video-last":
+      case "video-last": //if we came to the last video, mark it as last
         setVideo((prevVideo) => ({ ...prevVideo, isLastVideo: true }));
         break;
 
-      case "video-reset":
+      case "video-reset": //if we want to reset
         setVideo((prevVideo) => ({
           ...prevVideo,
           isLastVideo: false,
-          videoId: 0,
+          videoId: 0, //go back to the first video
         }));
         break;
 
-      case "play":
+      case "play": //click play to go from the first video (toggle play/pause)
         setVideo((prevVideo) => ({
           ...prevVideo,
           isPlaying: !prevVideo.isPlaying,
-          videoId: 0,
+        }));
+        break;
+
+      case "pause": //click play to go from the first video (toggle play/pause)
+        setVideo((prevVideo) => ({
+          ...prevVideo,
+          isPlaying: !prevVideo.isPlaying,
         }));
         break;
 
@@ -116,6 +180,9 @@ const VideoCarousel = () => {
                   playsInline={true}
                   preload="auto"
                   muted
+                  className={`${
+                    list.id === 2 && "translate-x44"
+                  } pointer-events-none`}
                   ref={(el) => (videoRef.current[i] = el)}
                   onPlay={() => {
                     setVideo((prevVideo) => ({
@@ -124,6 +191,11 @@ const VideoCarousel = () => {
                     }));
                   }}
                   onLoadedMetadata={(e) => handleLoadedMetadata(i, e)}
+                  onEnded={() =>
+                    i !== 3
+                      ? handleProcess("video-end", i)
+                      : handleProcess("video-last")
+                  }
                 >
                   <source src={list.video} type="video/mp4" />
                 </video>
@@ -163,7 +235,7 @@ const VideoCarousel = () => {
                 ? () => handleProcess("video-reset")
                 : !isPlaying
                 ? () => handleProcess("play")
-                : handleProcess("pause")
+                : () => handleProcess("pause")
             }
           />
         </button>
